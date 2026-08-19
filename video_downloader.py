@@ -19,13 +19,9 @@ Run:
     python video_downloader.py
 """
 
-import csv
-import json
 import os
 import platform
 import shutil
-import subprocess
-import sys
 import tarfile
 import tempfile
 import threading
@@ -34,7 +30,6 @@ import urllib.request
 import uuid
 import zipfile
 import tkinter as tk
-from datetime import datetime
 from tkinter import font as tkfont
 from tkinter import ttk, filedialog, messagebox
 
@@ -43,11 +38,9 @@ from videodownloader.optional_deps import yt_dlp, sv_ttk
 from videodownloader.paths import (
     APP_DIR,
     FFMPEG_DIR,
-    CONFIG_PATH,
     HISTORY_PATH,
     README_PATH,
     DEFAULT_DOWNLOAD_FOLDER,
-    HISTORY_FIELDS,
     FFMPEG_EXE_NAME,
     FFPROBE_EXE_NAME,
     LOCAL_FFMPEG_PATH,
@@ -78,152 +71,18 @@ def pick_available_font(candidates, fallback):
     return fallback
 
 
-def load_config():
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
-
-def save_config(data):
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-
-def update_config(**kwargs):
-    """Load, merge, and rewrite the config file with the given fields."""
-    config = load_config()
-    config.update(kwargs)
-    save_config(config)
-
-
-def ensure_history_file():
-    if not os.path.exists(HISTORY_PATH):
-        try:
-            with open(HISTORY_PATH, "w", newline="", encoding="utf-8") as f:
-                csv.DictWriter(f, fieldnames=HISTORY_FIELDS).writeheader()
-        except OSError:
-            pass
-
-
-def append_history(url, filename, location):
-    ensure_history_file()
-    row = {
-        "url": url,
-        "filename": filename or "",
-        "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "location": location,
-    }
-    try:
-        with open(HISTORY_PATH, "a", newline="", encoding="utf-8") as f:
-            csv.DictWriter(f, fieldnames=HISTORY_FIELDS).writerow(row)
-    except OSError:
-        pass
-
-
-def read_history():
-    """Returns rows newest-first, or [] if there's no history yet."""
-    if not os.path.exists(HISTORY_PATH):
-        return []
-    try:
-        with open(HISTORY_PATH, "r", newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        rows.reverse()
-        return rows
-    except OSError:
-        return []
-
-
-def open_with_default_app(path):
-    """Open a file with whatever the OS has associated with it. Returns True/False."""
-    system = platform.system()
-    try:
-        if system == "Windows":
-            os.startfile(path)  # noqa: this attribute only exists on Windows
-        elif system == "Darwin":
-            subprocess.run(["open", path], check=True)
-        else:
-            subprocess.run(["xdg-open", path], check=True)
-        return True
-    except Exception:
-        return False
-
-
-def check_ffmpeg(path):
-    """Return True if `path` (an executable name or full path) runs as ffmpeg."""
-    if not path:
-        return False
-    try:
-        result = subprocess.run(
-            [path, "-version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=5,
-        )
-        return result.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def find_in_dir(root_dir, filename):
-    for dirpath, _, filenames in os.walk(root_dir):
-        if filename in filenames:
-            return os.path.join(dirpath, filename)
-    return None
-
-
-def get_installed_ytdlp_version():
-    if yt_dlp is None:
-        return None
-    return getattr(yt_dlp.version, "__version__", None)
-
-
-def parse_version_tuple(version_str):
-    parts = []
-    for chunk in version_str.split("."):
-        digits = "".join(ch for ch in chunk if ch.isdigit())
-        parts.append(int(digits) if digits else 0)
-    return tuple(parts)
-
-
-def version_is_newer(candidate, current):
-    if not candidate or not current:
-        return False
-    return parse_version_tuple(candidate) > parse_version_tuple(current)
-
-
-def get_latest_ytdlp_version(timeout=4):
-    """Best-effort check against PyPI. Returns None on any failure (offline, blocked, etc.)."""
-    try:
-        with urllib.request.urlopen("https://pypi.org/pypi/yt-dlp/json", timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data.get("info", {}).get("version")
-    except Exception:
-        return None
-
-
-def update_ytdlp_package():
-    """Run `pip install --upgrade yt-dlp` using the same interpreter running this app."""
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=180,
-            text=True,
-        )
-        return result.returncode == 0, result.stdout
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, str(exc)
-
-
-def restart_app():
-    """Relaunch this script with the same interpreter and arguments."""
-    os.execv(sys.executable, [sys.executable] + sys.argv)
+from videodownloader.config import load_config, save_config, update_config
+from videodownloader.history import ensure_history_file, append_history, read_history
+from videodownloader.os_utils import open_with_default_app, restart_app
+from videodownloader.ffmpeg_utils import check_ffmpeg, find_in_dir
+from videodownloader.ytdlp_utils import (
+    get_installed_ytdlp_version,
+    parse_version_tuple,
+    version_is_newer,
+    get_latest_ytdlp_version,
+    update_ytdlp_package,
+    check_and_apply_ytdlp_update_before_launch,
+)
 
 
 class VideoDownloaderApp:
@@ -1234,29 +1093,6 @@ class VideoDownloaderApp:
             toast.after(4500, lambda: toast.destroy() if toast.winfo_exists() else None)
         except tk.TclError:
             pass  # main window may already be closing
-
-
-def check_and_apply_ytdlp_update_before_launch():
-    """
-    Best-effort, non-blocking-in-spirit check that runs before the window
-    opens (so there's no in-progress work to lose). If a newer yt-dlp is
-    on PyPI, install it and relaunch this script so the update actually
-    takes effect. Any failure here (offline, PyPI unreachable, pip error)
-    is silent and the app just opens with whatever version is installed.
-    """
-    if yt_dlp is None:
-        return
-    current = get_installed_ytdlp_version()
-    latest = get_latest_ytdlp_version()
-    if latest and version_is_newer(latest, current):
-        print(f"[yt-dlp] Newer version available: {current} -> {latest}. Updating...")
-        ok, output = update_ytdlp_package()
-        if ok:
-            print("[yt-dlp] Updated. Restarting...")
-            restart_app()
-        else:
-            print("[yt-dlp] Update failed, continuing with the current version.")
-            print(output)
 
 
 def main():
