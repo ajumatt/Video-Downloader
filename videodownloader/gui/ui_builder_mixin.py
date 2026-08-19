@@ -34,7 +34,7 @@ class UIBuilderMixin:
         ttk.Button(toolbar, text="Exit", command=self._on_close).pack(side="left")
 
         # --- download card ------------------------------------------------
-        card = ttk.LabelFrame(outer, text="Download", padding=16, style="Section.TLabelframe")
+        card = ttk.LabelFrame(outer, text="Download", padding=(16, 12, 16, 14), style="Section.TLabelframe")
         card.grid(row=1, column=0, sticky="ew")
         card.columnconfigure(0, weight=1)
         card.columnconfigure(1, weight=1)
@@ -176,7 +176,7 @@ class UIBuilderMixin:
         queue_tree_frame.columnconfigure(0, weight=1)
 
         self.queue_tree = ttk.Treeview(
-            queue_tree_frame, columns=("url", "status", "progress"), show="headings", height=5
+            queue_tree_frame, columns=("url", "status", "progress"), show="headings", height=7
         )
         self.queue_tree.heading("url", text="URL")
         self.queue_tree.heading("status", text="Status")
@@ -190,7 +190,7 @@ class UIBuilderMixin:
         queue_scroll.grid(row=0, column=1, sticky="ns")
 
         # --- activity log card -------------------------------------------
-        log_card = ttk.LabelFrame(outer, text="Activity log", padding=(16, 12, 16, 16), style="Section.TLabelframe")
+        log_card = ttk.LabelFrame(outer, text="Activity log", padding=(16, 12, 16, 14), style="Section.TLabelframe")
         log_card.grid(row=3, column=0, sticky="nsew", pady=(0, 14))
         outer.rowconfigure(3, weight=1)
         log_card.columnconfigure(0, weight=1)
@@ -230,9 +230,10 @@ class UIBuilderMixin:
         ffmpeg_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         ffmpeg_row.columnconfigure(0, weight=1)
         self.ffmpeg_status_var = tk.StringVar(value="Checking for ffmpeg...")
-        ttk.Label(ffmpeg_row, textvariable=self.ffmpeg_status_var, style="Muted.TLabel", wraplength=380).grid(
-            row=0, column=0, sticky="w"
+        self.ffmpeg_status_label = ttk.Label(
+            ffmpeg_row, textvariable=self.ffmpeg_status_var, style="Muted.TLabel", wraplength=380
         )
+        self.ffmpeg_status_label.grid(row=0, column=0, sticky="w")
         ffmpeg_btns = ttk.Frame(ffmpeg_row)
         ffmpeg_btns.grid(row=0, column=1, sticky="e")
         self.download_ffmpeg_btn = ttk.Button(
@@ -248,12 +249,24 @@ class UIBuilderMixin:
         ytdlp_row.columnconfigure(0, weight=1)
         current_version = get_installed_ytdlp_version() or "not installed"
         self.ytdlp_status_var = tk.StringVar(value=f"yt-dlp: v{current_version}")
-        ttk.Label(ytdlp_row, textvariable=self.ytdlp_status_var, style="Muted.TLabel", wraplength=380).grid(
-            row=0, column=0, sticky="w"
+        self.ytdlp_status_label = ttk.Label(
+            ytdlp_row, textvariable=self.ytdlp_status_var, style="Muted.TLabel", wraplength=380
         )
+        self.ytdlp_status_label.grid(row=0, column=0, sticky="w")
         self.check_ytdlp_btn = ttk.Button(
             ytdlp_row, text="Check for updates", command=lambda: self._start_ytdlp_check(manual=True)
         )
         self.check_ytdlp_btn.grid(row=0, column=1, sticky="e")
 
+        # Let the two status labels above rewrap to the window's actual
+        # width on resize instead of staying fixed at their initial 380px.
+        self.root.bind("<Configure>", self._on_root_resize)
+
         self._ui_fully_built = True
+
+    def _on_root_resize(self, event):
+        if event.widget is not self.root:
+            return
+        new_wrap = max(280, event.width - 400)
+        self.ffmpeg_status_label.configure(wraplength=new_wrap)
+        self.ytdlp_status_label.configure(wraplength=new_wrap)
