@@ -40,5 +40,7 @@ def read_history():
             rows = list(csv.DictReader(f))
         rows.reverse()
         return rows
-    except OSError:
+    except (OSError, ValueError, csv.Error):
+        # ValueError covers UnicodeDecodeError from a corrupted/mis-encoded
+        # file; csv.Error covers things like a stray NUL byte mid-file.
         return []

@@ -64,10 +64,14 @@ class UIBuilderMixin:
         self.quality_menu.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(2, 14))
         self.quality_menu.bind("<<ComboboxSelected>>", lambda e: self._persist_ui_state())
 
+        # Separates the required path (URL/folder/quality, above) from the
+        # optional/advanced settings below, so the primary flow scans faster.
+        ttk.Separator(card, orient="horizontal").grid(row=6, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+
         # --- filename template row ---------------------------------------
-        ttk.Label(card, text="Filename").grid(row=6, column=0, columnspan=2, sticky="w")
+        ttk.Label(card, text="Filename", style="Muted.TLabel").grid(row=7, column=0, columnspan=2, sticky="w")
         template_row = ttk.Frame(card)
-        template_row.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(2, 14))
+        template_row.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(2, 14))
         template_row.columnconfigure(1, weight=1)
         saved_template_name = self.saved_config.get("output_template_name", "Title")
         self.output_template_var = tk.StringVar(
@@ -89,13 +93,16 @@ class UIBuilderMixin:
 
         # --- playlist / subtitles / cookies row ---------------------------
         options_row = ttk.Frame(card)
-        options_row.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        options_row.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 4))
 
         self.playlist_var = tk.BooleanVar(value=self.saved_config.get("download_playlist", False))
         ttk.Checkbutton(
             options_row, text="Download entire playlist", variable=self.playlist_var,
             command=self._persist_ui_state,
         ).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(
+            options_row, text="(applies when the URL includes YouTube's list= parameter)", style="Muted.TLabel"
+        ).grid(row=0, column=1, sticky="w", padx=(6, 0), pady=(0, 6))
 
         self.subtitles_var = tk.BooleanVar(value=self.saved_config.get("download_subtitles", False))
         sub_check = ttk.Checkbutton(
@@ -111,7 +118,7 @@ class UIBuilderMixin:
         )
 
         cookie_row = ttk.Frame(card)
-        cookie_row.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        cookie_row.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         ttk.Label(cookie_row, text="Sign-in required?").pack(side="left", padx=(0, 8))
         saved_browser = self.saved_config.get("cookies_browser", "None")
         self.cookies_browser_var = tk.StringVar(
@@ -123,13 +130,15 @@ class UIBuilderMixin:
         )
         cookie_menu.pack(side="left")
         cookie_menu.bind("<<ComboboxSelected>>", lambda e: self._persist_ui_state())
-        ttk.Label(cookie_row, text="Use cookies from this browser (must be closed on Windows)", style="Muted.TLabel").pack(
-            side="left", padx=(8, 0)
-        )
+        ttk.Label(
+            cookie_row,
+            text="(browser must be closed first, or you'll get a database-locked error)",
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(8, 0))
 
         # --- action row -----------------------------------------------------
         action_row = ttk.Frame(card)
-        action_row.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        action_row.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         self.download_btn = ttk.Button(
             action_row, text="Add to Queue", command=self._enqueue_current, style="Accent.TButton"
         )
@@ -140,11 +149,11 @@ class UIBuilderMixin:
         self.cancel_btn.pack(side="left", padx=(8, 0))
 
         self.progress = ttk.Progressbar(card, mode="determinate", maximum=100)
-        self.progress.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(14, 6))
+        self.progress.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(14, 6))
 
         self.status_var = tk.StringVar(value="Ready.")
         ttk.Label(card, textvariable=self.status_var, style="Muted.TLabel").grid(
-            row=12, column=0, columnspan=2, sticky="w"
+            row=13, column=0, columnspan=2, sticky="w"
         )
 
         # --- queue card -----------------------------------------------------

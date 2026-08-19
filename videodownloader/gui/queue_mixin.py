@@ -12,6 +12,58 @@ from videodownloader.constants import COOKIE_BROWSER_OPTIONS, FFMPEG_QUALITY_MAP
 from videodownloader.history import append_history
 from videodownloader.text_utils import strip_ansi
 
+# (substring to look for in a raw yt-dlp error, plain-English follow-up
+# line). First match wins; checked in order, so put more specific
+# markers before more general ones.
+FRIENDLY_ERROR_HINTS = [
+    (
+        "403",
+        "This looks like a YouTube-side block currently affecting yt-dlp broadly, "
+        "not a problem with this app or your setup. It often clears up within a "
+        "retry or two, or with the next yt-dlp release.",
+    ),
+    (
+        "Unsupported URL",
+        "This doesn't look like a page yt-dlp recognizes. Double-check it's a "
+        "direct link to a video page.",
+    ),
+    (
+        "Private video",
+        "This video is private and can't be downloaded without access to the "
+        "account it belongs to.",
+    ),
+    (
+        "Video unavailable",
+        "This video isn't available anymore (removed, region-blocked, or "
+        'age-restricted). If it\'s age-restricted, try the "Sign-in required?" option.',
+    ),
+    ("Name or service not known", "Couldn't reach the internet. Check your connection and try again."),
+    ("getaddrinfo failed", "Couldn't reach the internet. Check your connection and try again."),
+    ("Failed to establish a new connection", "Couldn't reach the internet. Check your connection and try again."),
+    ("timed out", "The connection timed out. Check your internet connection and try again."),
+]
+
+
+def _friendly_error_hint(error_text):
+    for marker, hint in FRIENDLY_ERROR_HINTS:
+        if marker in error_text:
+            return hint
+    return None
+
+
+def _resolves_within_folder(folder, template):
+    """True if joining `folder` with the (unsubstituted) template stays
+    within `folder`. Checked against the actual joined+normalized path
+    rather than pattern-matching the template string, since os.path.join
+    has surprising escape cases on Windows: os.path.isabs("/etc/x") is
+    False there (no drive letter = "drive-relative", not absolute), yet
+    os.path.join(folder, "/etc/x") resolves to the *root of folder's
+    drive*, silently escaping the chosen folder. Subfolders (e.g.
+    "%(uploader)s/%(title)s.%(ext)s") are fine and intentional."""
+    folder_abs = os.path.normpath(os.path.abspath(folder))
+    joined_abs = os.path.normpath(os.path.abspath(os.path.join(folder, template)))
+    return joined_abs == folder_abs or joined_abs.startswith(folder_abs + os.sep)
+
 
 class QueueMixin:
     def _enqueue_current(self):
@@ -21,12 +73,20 @@ class QueueMixin:
 
         url = self.url_var.get().strip()
         folder = self.folder_var.get().strip()
+        template = self._current_output_template()
 
         if not url:
             messagebox.showwarning("Missing URL", "Paste a video URL first.")
             return
         if not folder:
             messagebox.showwarning("Missing folder", "Choose a folder to save the video in.")
+            return
+        if not _resolves_within_folder(folder, template):
+            messagebox.showwarning(
+                "Invalid filename template",
+                "The filename template can't be an absolute path or use '..' to leave "
+                "the download folder. Fix it in the Filename field before adding to the queue.",
+            )
             return
         if not os.path.isdir(folder):
             try:
@@ -40,7 +100,7 @@ class QueueMixin:
             "url": url,
             "folder": folder,
             "quality": self.quality_var.get(),
-            "template": self._current_output_template(),
+            "template": template,
             "playlist": self.playlist_var.get(),
             "subtitles": self.subtitles_var.get(),
             "subtitle_langs": self.subtitle_lang_var.get(),
@@ -174,7 +234,11 @@ class QueueMixin:
         def postprocessor_hook(d):
             # Fires after merging/audio-extraction; gives us the actual
             # final filename when it differs from the raw download (e.g.
-            # merged into .mp4, or converted to .mp3).
+            # merged into .mp4, or converted to .mp3). Also re-checked here
+            # so cancelling during a merge/extraction isn't ignored (only
+            # progress_hook's "downloading" phase used to check this).
+            if self.cancel_requested:
+                raise yt_dlp.utils.DownloadError("Cancelled by user")
             if d.get("status") == "finished":
                 info = d.get("info_dict") or {}
                 final_path = info.get("filepath") or info.get("_filename")
@@ -221,9 +285,11 @@ class QueueMixin:
         max_attempts = 3
         last_error = None
         success = False
+        was_cancelled = False
 
         for attempt in range(1, max_attempts + 1):
             if self.cancel_requested:
+                was_cancelled = True
                 last_error = last_error or "Cancelled by user"
                 break
 
@@ -231,6 +297,9 @@ class QueueMixin:
                 self.root.after(0, self._set_status, f"Retrying ({attempt}/{max_attempts})...")
                 self.root.after(0, self._log, f"Retrying after: {last_error}")
                 time.sleep(2)
+                if self.cancel_requested:
+                    was_cancelled = True
+                    break
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -246,8 +315,11 @@ class QueueMixin:
                 break
             except Exception as exc:
                 last_error = str(exc)
+                if self.cancel_requested:
+                    was_cancelled = True
+                    break
                 is_403 = "403" in last_error
-                if self.cancel_requested or not is_403 or attempt == max_attempts:
+                if not is_403 or attempt == max_attempts:
                     break
 
         if success:
@@ -262,7 +334,7 @@ class QueueMixin:
             self.root.after(0, self._show_toast, "Download complete", filename or item["url"], "success")
         else:
             clean = strip_ansi(last_error or "Unknown error")
-            cancelled = "Cancelled by user" in clean
+            cancelled = was_cancelled or "Cancelled by user" in clean
             item["status"] = "Cancelled" if cancelled else "Failed"
             item["error"] = clean
 
@@ -270,16 +342,11 @@ class QueueMixin:
                 self.root.after(0, self._set_status, "Cancelled.")
                 self.root.after(0, self._log, "Cancelled.")
             else:
-                is_403 = "403" in clean
                 self.root.after(0, self._set_status, "Failed.")
                 self.root.after(0, self._log, f"Error: {clean}")
-                if is_403:
-                    self.root.after(
-                        0, self._log,
-                        "This looks like a YouTube-side block currently affecting yt-dlp broadly, "
-                        "not a problem with this app or your setup. It often clears up within a "
-                        "retry or two, or with the next yt-dlp release.",
-                    )
+                hint = _friendly_error_hint(clean)
+                if hint:
+                    self.root.after(0, self._log, hint)
                 self.root.after(0, self._show_toast, "Download failed", clean[:140], "error")
 
         self.root.after(0, self._update_queue_row, item)
