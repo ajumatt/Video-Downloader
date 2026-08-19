@@ -54,6 +54,14 @@ class MiscMixin:
         return preset_value if preset_value is not None else (self.custom_template_var.get() or "%(title)s.%(ext)s")
 
     def _on_close(self):
+        if self.active_queue_item_id is not None:
+            if not messagebox.askyesno(
+                "Download in progress",
+                "A download is currently in progress. Exit anyway? "
+                "The in-progress file will likely be left incomplete.",
+            ):
+                return
+            self.cancel_requested = True
         self._persist_ui_state()
         self.root.destroy()
 
