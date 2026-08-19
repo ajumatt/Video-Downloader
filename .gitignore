@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+
+# ffmpeg binaries (auto-downloaded by the app on first run, see README.md)
+ffmpeg/
+
+# Env files (never commit real credentials)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Personal Claude overrides
+CLAUDE.local.md
