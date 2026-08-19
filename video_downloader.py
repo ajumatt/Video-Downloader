@@ -49,19 +49,20 @@ try:
 except ImportError:
     sv_ttk = None
 
+from videodownloader.paths import (
+    APP_DIR,
+    FFMPEG_DIR,
+    CONFIG_PATH,
+    HISTORY_PATH,
+    README_PATH,
+    DEFAULT_DOWNLOAD_FOLDER,
+    HISTORY_FIELDS,
+    FFMPEG_EXE_NAME,
+    FFPROBE_EXE_NAME,
+    LOCAL_FFMPEG_PATH,
+)
+
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-FFMPEG_DIR = os.path.join(APP_DIR, "ffmpeg")
-CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".video_downloader_config.json")
-HISTORY_PATH = os.path.join(os.path.expanduser("~"), ".video_downloader_history.csv")
-README_PATH = os.path.join(APP_DIR, "README.md")
-DEFAULT_DOWNLOAD_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads")
-HISTORY_FIELDS = ["url", "filename", "datetime", "location"]
-
-FFMPEG_EXE_NAME = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
-FFPROBE_EXE_NAME = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
-LOCAL_FFMPEG_PATH = os.path.join(FFMPEG_DIR, FFMPEG_EXE_NAME)
 
 # Known-good, stable download links for portable ffmpeg builds.
 FFMPEG_SOURCES = {
