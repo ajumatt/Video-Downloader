@@ -1,0 +1,79 @@
+"""The main application window: VideoDownloaderApp, assembled from the
+mixins in this package. Each mixin owns one cohesive group of behavior
+(theme, ffmpeg, yt-dlp, queue, etc.) but they all operate on the same
+`self` — the same widgets, StringVars, and shared state defined here."""
+
+import tkinter as tk
+from tkinter import font as tkfont
+from tkinter import messagebox
+
+from videodownloader.optional_deps import yt_dlp
+from videodownloader.constants import PREFERRED_UI_FONTS, PREFERRED_MONO_FONTS
+from videodownloader.config import load_config
+
+from videodownloader.gui.toast_mixin import ToastMixin
+from videodownloader.gui.theme_mixin import ThemeMixin
+from videodownloader.gui.ytdlp_mixin import YtdlpMixin
+from videodownloader.gui.misc_mixin import MiscMixin
+from videodownloader.gui.ui_builder_mixin import UIBuilderMixin
+from videodownloader.gui.ffmpeg_mixin import FfmpegMixin
+from videodownloader.gui.queue_mixin import QueueMixin
+
+
+def pick_available_font(candidates, fallback):
+    try:
+        available = set(tkfont.families())
+    except tk.TclError:
+        return fallback
+    for name in candidates:
+        if name in available:
+            return name
+    return fallback
+
+
+class VideoDownloaderApp(
+    ToastMixin, ThemeMixin, YtdlpMixin, MiscMixin,
+    UIBuilderMixin, FfmpegMixin, QueueMixin,
+):
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Video Downloader")
+        self.root.geometry("780x1150")
+        self.root.minsize(700, 950)
+
+        self.ffmpeg_thread = None
+        self.ytdlp_thread = None
+        self.cancel_requested = False
+        self.ffmpeg_path = None
+        self.ffmpeg_busy = False
+        self.ytdlp_busy = False
+
+        # Download queue: a list of dicts, processed one at a time by a
+        # single background worker thread. Items stay in this list after
+        # finishing (status Done/Failed/Cancelled) until removed, so the
+        # queue view doubles as a session history.
+        self.download_queue = []
+        self.queue_tree_iids = {}
+        self.queue_worker_running = False
+        self.active_queue_item_id = None
+
+        self.ui_font = pick_available_font(PREFERRED_UI_FONTS, "TkDefaultFont")
+        self.mono_font = pick_available_font(PREFERRED_MONO_FONTS, "TkFixedFont")
+
+        # Load remembered settings (theme, last folder, last quality) before
+        # anything gets built, so the UI opens already reflecting them.
+        self.saved_config = load_config()
+        self._quality_restored = False
+
+        self._apply_theme(self.saved_config.get("theme", "light"))
+        self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._startup_ffmpeg_check()
+
+        if yt_dlp is None:
+            messagebox.showerror(
+                "yt-dlp not found",
+                "The yt-dlp package isn't installed.\n\n"
+                "Open a terminal and run:\n    pip install yt-dlp\n\n"
+                "Then restart this app.",
+            )
