@@ -3,12 +3,18 @@
 import os
 import platform
 import shutil
+import socket
 import tarfile
 import tempfile
 import threading
 import urllib.request
 import zipfile
 from tkinter import filedialog, messagebox
+
+# urlretrieve has no timeout parameter of its own; a stalled connection
+# (flaky wifi, a proxy that silently drops idle connections) would
+# otherwise hang this thread forever.
+_FFMPEG_DOWNLOAD_TIMEOUT_SECONDS = 30
 
 from videodownloader.config import load_config, update_config
 from videodownloader.ffmpeg_utils import check_ffmpeg, find_in_dir
@@ -110,9 +116,11 @@ class FfmpegMixin:
             self.root.after(0, self._finish_ffmpeg_download)
             return
 
-        os.makedirs(FFMPEG_DIR, exist_ok=True)
-        tmp_dir = tempfile.mkdtemp(prefix="ffmpeg_setup_")
+        tmp_dir = None
         try:
+            os.makedirs(FFMPEG_DIR, exist_ok=True)
+            tmp_dir = tempfile.mkdtemp(prefix="ffmpeg_setup_")
+
             self.root.after(0, self._set_status, "Downloading ffmpeg...")
             self.root.after(0, self.progress.configure, {"value": 0})
 
@@ -156,7 +164,8 @@ class FfmpegMixin:
             if manual:
                 self.root.after(0, messagebox.showerror, "ffmpeg setup failed", msg)
         finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+            if tmp_dir:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             self.root.after(0, self._finish_ffmpeg_download)
 
     def _finish_ffmpeg_download(self):
@@ -173,7 +182,12 @@ class FfmpegMixin:
                 self.root.after(0, self.progress.configure, {"value": pct})
                 self.root.after(0, self._set_status, f"Downloading ffmpeg... {pct:.0f}%")
 
-        urllib.request.urlretrieve(url, archive_path, reporthook=reporthook)
+        previous_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(_FFMPEG_DOWNLOAD_TIMEOUT_SECONDS)
+        try:
+            urllib.request.urlretrieve(url, archive_path, reporthook=reporthook)
+        finally:
+            socket.setdefaulttimeout(previous_timeout)
 
         extract_dir = archive_path + "_extracted"
         os.makedirs(extract_dir, exist_ok=True)

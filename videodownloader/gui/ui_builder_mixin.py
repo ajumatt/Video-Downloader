@@ -34,7 +34,7 @@ class UIBuilderMixin:
         ttk.Button(toolbar, text="Exit", command=self._on_close).pack(side="left")
 
         # --- download card ------------------------------------------------
-        card = ttk.LabelFrame(outer, text="Download", padding=16)
+        card = ttk.LabelFrame(outer, text="Download", padding=16, style="Section.TLabelframe")
         card.grid(row=1, column=0, sticky="ew")
         card.columnconfigure(0, weight=1)
         card.columnconfigure(1, weight=1)
@@ -148,7 +148,7 @@ class UIBuilderMixin:
         )
 
         # --- queue card -----------------------------------------------------
-        queue_card = ttk.LabelFrame(outer, text="Queue", padding=(16, 12, 16, 14))
+        queue_card = ttk.LabelFrame(outer, text="Queue", padding=(16, 12, 16, 14), style="Section.TLabelframe")
         queue_card.grid(row=2, column=0, sticky="ew", pady=(14, 14))
         queue_card.columnconfigure(0, weight=1)
 
@@ -181,7 +181,7 @@ class UIBuilderMixin:
         queue_scroll.grid(row=0, column=1, sticky="ns")
 
         # --- activity log card -------------------------------------------
-        log_card = ttk.LabelFrame(outer, text="Activity log", padding=(16, 12, 16, 16))
+        log_card = ttk.LabelFrame(outer, text="Activity log", padding=(16, 12, 16, 16), style="Section.TLabelframe")
         log_card.grid(row=3, column=0, sticky="nsew", pady=(0, 14))
         outer.rowconfigure(3, weight=1)
         log_card.columnconfigure(0, weight=1)
@@ -213,7 +213,7 @@ class UIBuilderMixin:
         self._apply_theme(self.theme_mode)
 
         # --- system status card --------------------------------------------
-        sys_card = ttk.LabelFrame(outer, text="System", padding=(16, 12, 16, 14))
+        sys_card = ttk.LabelFrame(outer, text="System", padding=(16, 12, 16, 14), style="Section.TLabelframe")
         sys_card.grid(row=4, column=0, sticky="ew")
         sys_card.columnconfigure(0, weight=1)
 

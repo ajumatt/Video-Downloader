@@ -38,7 +38,10 @@ class VideoDownloaderApp(
     def __init__(self, root):
         self.root = root
         self.root.title("Video Downloader")
-        self.root.geometry("780x1150")
+        # 1150 is taller than the usable height on a 1080p screen once the
+        # taskbar is accounted for; cap it to whatever actually fits.
+        default_height = min(1150, max(950, self.root.winfo_screenheight() - 100))
+        self.root.geometry(f"780x{default_height}")
         self.root.minsize(700, 950)
 
         self.ffmpeg_thread = None
