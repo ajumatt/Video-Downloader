@@ -40,7 +40,16 @@ class UIBuilderMixin:
         card.columnconfigure(0, weight=1)
         card.columnconfigure(1, weight=1)
 
-        ttk.Label(card, text="Video URL").grid(row=0, column=0, columnspan=2, sticky="w")
+        url_header = ttk.Frame(card)
+        url_header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        url_header.columnconfigure(0, weight=1)
+        ttk.Label(url_header, text="Video URL").grid(row=0, column=0, sticky="w")
+        self.clipboard_detect_var = tk.BooleanVar(value=self.saved_config.get("detect_clipboard_urls", False))
+        ttk.Checkbutton(
+            url_header, text="Detect URLs from clipboard", variable=self.clipboard_detect_var,
+            command=self._persist_ui_state,
+        ).grid(row=0, column=1, sticky="e")
+
         self.url_var = tk.StringVar()
         url_entry = ttk.Entry(card, textvariable=self.url_var, font=(self.ui_font, 10))
         url_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 12))
@@ -326,6 +335,15 @@ class UIBuilderMixin:
         # resize instead of staying fixed at their initial 380px.
         self.root.bind("<Configure>", self._on_root_resize)
 
+        # Seed with whatever's on the clipboard *before* the app opened, so
+        # detection only reacts to URLs copied after this point, not
+        # whatever happened to already be there.
+        try:
+            self._last_seen_clipboard = self.root.clipboard_get()
+        except tk.TclError:
+            self._last_seen_clipboard = None
+        self.root.bind("<FocusIn>", self._on_root_focus_in)
+
         self._ui_fully_built = True
 
     def _on_root_resize(self, event):
@@ -335,3 +353,19 @@ class UIBuilderMixin:
         self.ffmpeg_status_label.configure(wraplength=new_wrap)
         self.ytdlp_status_label.configure(wraplength=new_wrap)
         self.app_update_status_label.configure(wraplength=new_wrap)
+
+    def _on_root_focus_in(self, event):
+        if event.widget is not self.root or not self.clipboard_detect_var.get():
+            return
+        try:
+            clipboard_text = self.root.clipboard_get()
+        except tk.TclError:
+            return
+        if clipboard_text == self._last_seen_clipboard:
+            return
+        self._last_seen_clipboard = clipboard_text
+        candidate = clipboard_text.strip()
+        looks_like_url = candidate.startswith("http://") or candidate.startswith("https://")
+        if looks_like_url and not self.url_var.get().strip():
+            self.url_var.set(candidate)
+            self._log(f"Detected URL from clipboard: {candidate}")

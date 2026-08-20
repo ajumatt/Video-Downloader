@@ -39,6 +39,7 @@ class MiscMixin:
             download_sponsorblock=self.sponsorblock_var.get(),
             sponsorblock_categories=self.sponsorblock_categories_var.get(),
             max_concurrent_downloads=self.max_concurrent_var.get(),
+            detect_clipboard_urls=self.clipboard_detect_var.get(),
         )
 
     def _on_template_choice_changed(self, event=None):
