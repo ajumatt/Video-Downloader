@@ -29,5 +29,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Personal Claude overrides
-CLAUDE.local.md
+# Personal local notes
+NOTES.local.md
