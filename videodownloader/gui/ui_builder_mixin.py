@@ -175,10 +175,6 @@ class UIBuilderMixin:
         ttk.Button(action_row, text="Add multiple...", command=self._open_batch_add_window).pack(
             side="left", padx=(8, 0)
         )
-        self.cancel_btn = ttk.Button(
-            action_row, text="Cancel current", command=self._cancel_active_item, state="disabled"
-        )
-        self.cancel_btn.pack(side="left", padx=(8, 0))
 
         self.progress = ttk.Progressbar(card, mode="determinate", maximum=100)
         self.progress.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(14, 6))
@@ -198,10 +194,25 @@ class UIBuilderMixin:
         queue_header.columnconfigure(0, weight=1)
         self.queue_count_var = tk.StringVar(value="Nothing queued yet.")
         ttk.Label(queue_header, textvariable=self.queue_count_var, style="Muted.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Button(queue_header, text="Remove selected", command=self._remove_selected_queue_item).grid(
-            row=0, column=1, padx=(0, 6)
+
+        ttk.Label(queue_header, text="Concurrent downloads:", style="Muted.TLabel").grid(
+            row=0, column=1, padx=(0, 4)
         )
-        ttk.Button(queue_header, text="Clear completed", command=self._clear_completed_queue_items).grid(row=0, column=2)
+        saved_concurrency = str(self.saved_config.get("max_concurrent_downloads", "1"))
+        self.max_concurrent_var = tk.StringVar(
+            value=saved_concurrency if saved_concurrency in ("1", "2", "3", "4", "5") else "1"
+        )
+        concurrency_menu = ttk.Combobox(
+            queue_header, textvariable=self.max_concurrent_var, state="readonly",
+            values=["1", "2", "3", "4", "5"], width=3,
+        )
+        concurrency_menu.grid(row=0, column=2, padx=(0, 6))
+        concurrency_menu.bind("<<ComboboxSelected>>", lambda e: self._persist_ui_state())
+
+        ttk.Button(queue_header, text="Remove selected", command=self._remove_selected_queue_item).grid(
+            row=0, column=3, padx=(0, 6)
+        )
+        ttk.Button(queue_header, text="Clear completed", command=self._clear_completed_queue_items).grid(row=0, column=4)
 
         queue_tree_frame = ttk.Frame(queue_card)
         queue_tree_frame.grid(row=1, column=0, sticky="ew")

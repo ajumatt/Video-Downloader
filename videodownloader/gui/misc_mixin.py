@@ -38,6 +38,7 @@ class MiscMixin:
             cookies_browser=self.cookies_browser_var.get(),
             download_sponsorblock=self.sponsorblock_var.get(),
             sponsorblock_categories=self.sponsorblock_categories_var.get(),
+            max_concurrent_downloads=self.max_concurrent_var.get(),
         )
 
     def _on_template_choice_changed(self, event=None):
@@ -56,14 +57,18 @@ class MiscMixin:
         return preset_value if preset_value is not None else (self.custom_template_var.get() or "%(title)s.%(ext)s")
 
     def _on_close(self):
-        if self.active_queue_item_id is not None:
-            if not messagebox.askyesno(
-                "Download in progress",
-                "A download is currently in progress. Exit anyway? "
-                "The in-progress file will likely be left incomplete.",
-            ):
+        downloading_items = [i for i in self.download_queue if i["status"] == "Downloading"]
+        if downloading_items:
+            count = len(downloading_items)
+            message = (
+                "A download is currently in progress. Exit anyway? The in-progress file will likely be left incomplete."
+                if count == 1 else
+                f"{count} downloads are currently in progress. Exit anyway? The in-progress files will likely be left incomplete."
+            )
+            if not messagebox.askyesno("Download in progress", message):
                 return
-            self.cancel_requested = True
+            for item in downloading_items:
+                item["cancel_requested"] = True
         self._persist_ui_state()
         self.root.destroy()
 

@@ -3,6 +3,7 @@ mixins in this package. Each mixin owns one cohesive group of behavior
 (theme, ffmpeg, yt-dlp, queue, etc.) but they all operate on the same
 `self` — the same widgets, StringVars, and shared state defined here."""
 
+import threading
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
@@ -47,20 +48,21 @@ class VideoDownloaderApp(
 
         self.ffmpeg_thread = None
         self.ytdlp_thread = None
-        self.cancel_requested = False
         self.ffmpeg_path = None
         self.ffmpeg_busy = False
         self.ytdlp_busy = False
         self.app_update_busy = False
 
-        # Download queue: a list of dicts, processed one at a time by a
-        # single background worker thread. Items stay in this list after
-        # finishing (status Done/Failed/Cancelled) until removed, so the
-        # queue view doubles as a session history.
+        # Download queue: a list of dicts, processed by 1-5 background
+        # worker threads (see the "Concurrent downloads" setting). Items
+        # stay in this list after finishing (status Done/Failed/Cancelled)
+        # until removed, so the queue view doubles as a session history.
+        # queue_lock protects claiming the next queued item and tracking
+        # active_worker_count, since multiple worker threads touch both.
         self.download_queue = []
         self.queue_tree_iids = {}
-        self.queue_worker_running = False
-        self.active_queue_item_id = None
+        self.queue_lock = threading.Lock()
+        self.active_worker_count = 0
 
         self.ui_font = pick_available_font(PREFERRED_UI_FONTS, "TkDefaultFont")
         self.mono_font = pick_available_font(PREFERRED_MONO_FONTS, "TkFixedFont")

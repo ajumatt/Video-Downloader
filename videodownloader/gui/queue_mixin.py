@@ -115,6 +115,7 @@ class QueueMixin:
             "progress": 0,
             "error": None,
             "filename": None,
+            "cancel_requested": False,
         }
 
     def _validate_form_settings(self, settings):
@@ -160,7 +161,7 @@ class QueueMixin:
         self._update_queue_count_label()
         self.url_var.set("")
         self._log(f"Added to queue: {url}")
-        self._maybe_start_queue_worker()
+        self._maybe_start_queue_workers()
 
     def _open_batch_add_window(self):
         if yt_dlp is None:
@@ -233,7 +234,7 @@ class QueueMixin:
 
         if added:
             self._update_queue_count_label()
-            self._maybe_start_queue_worker()
+            self._maybe_start_queue_workers()
 
         summary = f"Added {added} to queue"
         details = []
@@ -390,11 +391,7 @@ class QueueMixin:
         self._update_queue_count_label()
         self.url_var.set("")
         self._log(f"Added to queue (format {custom_format}): {url}")
-        self._maybe_start_queue_worker()
-
-    def _cancel_active_item(self):
-        self.cancel_requested = True
-        self._set_status("Cancelling...")
+        self._maybe_start_queue_workers()
 
     def _insert_queue_row(self, item):
         iid = self.queue_tree.insert("", "end", values=(item["url"], item["status"], self._progress_text(item)))
@@ -433,7 +430,8 @@ class QueueMixin:
             return
         if item["status"] == "Downloading":
             if messagebox.askyesno("Cancel download?", "This item is currently downloading. Cancel it?"):
-                self._cancel_active_item()
+                item["cancel_requested"] = True
+                self._log(f"Cancelling: {item['url']}")
             return
         self.download_queue.remove(item)
         self.queue_tree.delete(iid)
@@ -449,35 +447,46 @@ class QueueMixin:
             self.download_queue.remove(item)
         self._update_queue_count_label()
 
-    def _maybe_start_queue_worker(self):
-        if not self.queue_worker_running:
-            self.queue_worker_running = True
-            threading.Thread(target=self._process_queue_worker, daemon=True).start()
-
-    def _process_queue_worker(self):
-        while True:
+    def _claim_next_queued_item(self):
+        """Atomically finds the next Queued item and marks it Downloading,
+        so two worker threads can never both grab the same item."""
+        with self.queue_lock:
             next_item = next((i for i in self.download_queue if i["status"] == "Queued"), None)
-            if next_item is None:
+            if next_item is not None:
+                next_item["status"] = "Downloading"
+            return next_item
+
+    def _maybe_start_queue_workers(self):
+        max_workers = int(self.max_concurrent_var.get() or 1)
+        with self.queue_lock:
+            queued_count = sum(1 for i in self.download_queue if i["status"] == "Queued")
+            to_start = max(0, min(max_workers - self.active_worker_count, queued_count))
+            self.active_worker_count += to_start
+        for _ in range(to_start):
+            threading.Thread(target=self._queue_worker_loop, daemon=True).start()
+
+    def _queue_worker_loop(self):
+        while True:
+            item = self._claim_next_queued_item()
+            if item is None:
                 break
-            self._download_one_item(next_item)
-        self.queue_worker_running = False
-        self.root.after(0, self._on_queue_idle)
+            self.root.after(0, self._update_queue_row, item)
+            self.root.after(0, self._update_queue_count_label)
+            self._download_one_item(item)
+        with self.queue_lock:
+            self.active_worker_count -= 1
+            idle = self.active_worker_count == 0
+        if idle:
+            self.root.after(0, self._on_queue_idle)
 
     def _on_queue_idle(self):
-        self.cancel_btn.configure(state="disabled")
         self._set_status("Ready.")
 
     def _download_one_item(self, item):
-        self.active_queue_item_id = item["id"]
-        item["status"] = "Downloading"
         item["progress"] = 0
-        self.cancel_requested = False
 
         self.root.after(0, self._update_queue_row, item)
         self.root.after(0, self._update_queue_count_label)
-        self.root.after(0, self.cancel_btn.configure, {"state": "normal"})
-        self.root.after(0, self.progress.configure, {"value": 0})
-        self.root.after(0, self._set_status, "Starting...")
         self.root.after(0, self._log, f"Fetching: {item['url']}")
 
         if item["custom_format"]:
@@ -487,7 +496,7 @@ class QueueMixin:
             fmt = quality_map.get(item["quality"], "best")
 
         def progress_hook(d):
-            if self.cancel_requested:
+            if item["cancel_requested"]:
                 raise yt_dlp.utils.DownloadError("Cancelled by user")
             if d["status"] == "downloading":
                 total = d.get("total_bytes") or d.get("total_bytes_estimate")
@@ -495,16 +504,10 @@ class QueueMixin:
                 if total:
                     pct = downloaded / total * 100
                     item["progress"] = pct
-                    self.root.after(0, self.progress.configure, {"value": pct})
                     self.root.after(0, self._update_queue_row, item)
-                    speed = d.get("_speed_str", "").strip()
-                    eta = d.get("_eta_str", "").strip()
-                    self.root.after(0, self._set_status, f"Downloading... {pct:.1f}%  {speed}  ETA {eta}")
             elif d["status"] == "finished":
                 item["progress"] = 100
-                self.root.after(0, self.progress.configure, {"value": 100})
                 self.root.after(0, self._update_queue_row, item)
-                self.root.after(0, self._set_status, "Processing...")
                 filename = d.get("filename", "")
                 item["_raw_filename"] = filename
                 self.root.after(0, self._log, f"Downloaded: {os.path.basename(filename)}")
@@ -515,7 +518,7 @@ class QueueMixin:
             # merged into .mp4, or converted to .mp3). Also re-checked here
             # so cancelling during a merge/extraction isn't ignored (only
             # progress_hook's "downloading" phase used to check this).
-            if self.cancel_requested:
+            if item["cancel_requested"]:
                 raise yt_dlp.utils.DownloadError("Cancelled by user")
             if d.get("status") == "finished":
                 info = d.get("info_dict") or {}
@@ -586,16 +589,15 @@ class QueueMixin:
         was_cancelled = False
 
         for attempt in range(1, max_attempts + 1):
-            if self.cancel_requested:
+            if item["cancel_requested"]:
                 was_cancelled = True
                 last_error = last_error or "Cancelled by user"
                 break
 
             if attempt > 1:
-                self.root.after(0, self._set_status, f"Retrying ({attempt}/{max_attempts})...")
                 self.root.after(0, self._log, f"Retrying after: {last_error}")
                 time.sleep(2)
-                if self.cancel_requested:
+                if item["cancel_requested"]:
                     was_cancelled = True
                     break
 
@@ -613,7 +615,7 @@ class QueueMixin:
                 break
             except Exception as exc:
                 last_error = str(exc)
-                if self.cancel_requested:
+                if item["cancel_requested"]:
                     was_cancelled = True
                     break
                 is_403 = "403" in last_error
@@ -627,7 +629,6 @@ class QueueMixin:
             item["filename"] = filename
             item["progress"] = 100
             append_history(url=item["url"], filename=filename, location=item["folder"])
-            self.root.after(0, self._set_status, "Done.")
             self.root.after(0, self._log, f"Saved to: {item['folder']}")
             self.root.after(0, self._show_toast, "Download complete", filename or item["url"], "success")
         else:
@@ -637,10 +638,8 @@ class QueueMixin:
             item["error"] = clean
 
             if cancelled:
-                self.root.after(0, self._set_status, "Cancelled.")
                 self.root.after(0, self._log, "Cancelled.")
             else:
-                self.root.after(0, self._set_status, "Failed.")
                 self.root.after(0, self._log, f"Error: {clean}")
                 hint = _friendly_error_hint(clean)
                 if hint:
@@ -649,5 +648,3 @@ class QueueMixin:
 
         self.root.after(0, self._update_queue_row, item)
         self.root.after(0, self._update_queue_count_label)
-        self.cancel_requested = False
-        self.active_queue_item_id = None
