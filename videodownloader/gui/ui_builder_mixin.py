@@ -194,9 +194,14 @@ class UIBuilderMixin:
         )
 
         # --- queue card -----------------------------------------------------
+        # Shares leftover vertical space with the activity log card below
+        # (both get weight + a minsize) so a short window shrinks both
+        # gracefully instead of the log card alone getting squeezed to 0.
         queue_card = ttk.LabelFrame(outer, text="Queue", padding=(16, 12, 16, 14), style="Section.TLabelframe")
-        queue_card.grid(row=2, column=0, sticky="ew", pady=(14, 14))
+        queue_card.grid(row=2, column=0, sticky="nsew", pady=(14, 14))
+        outer.rowconfigure(2, weight=1, minsize=130)
         queue_card.columnconfigure(0, weight=1)
+        queue_card.rowconfigure(1, weight=1)
 
         queue_header = ttk.Frame(queue_card)
         queue_header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
@@ -224,11 +229,12 @@ class UIBuilderMixin:
         ttk.Button(queue_header, text="Clear completed", command=self._clear_completed_queue_items).grid(row=0, column=4)
 
         queue_tree_frame = ttk.Frame(queue_card)
-        queue_tree_frame.grid(row=1, column=0, sticky="ew")
+        queue_tree_frame.grid(row=1, column=0, sticky="nsew")
         queue_tree_frame.columnconfigure(0, weight=1)
+        queue_tree_frame.rowconfigure(0, weight=1)
 
         self.queue_tree = ttk.Treeview(
-            queue_tree_frame, columns=("url", "status", "progress"), show="headings", height=7
+            queue_tree_frame, columns=("url", "status", "progress"), show="headings", height=3
         )
         self.queue_tree.heading("url", text="URL")
         self.queue_tree.heading("status", text="Status")
@@ -238,13 +244,13 @@ class UIBuilderMixin:
         self.queue_tree.column("progress", width=90, stretch=False, anchor="e")
         queue_scroll = ttk.Scrollbar(queue_tree_frame, orient="vertical", command=self.queue_tree.yview)
         self.queue_tree.configure(yscrollcommand=queue_scroll.set)
-        self.queue_tree.grid(row=0, column=0, sticky="ew")
+        self.queue_tree.grid(row=0, column=0, sticky="nsew")
         queue_scroll.grid(row=0, column=1, sticky="ns")
 
         # --- activity log card -------------------------------------------
         log_card = ttk.LabelFrame(outer, text="Activity log", padding=(16, 12, 16, 14), style="Section.TLabelframe")
         log_card.grid(row=3, column=0, sticky="nsew", pady=(0, 14))
-        outer.rowconfigure(3, weight=1)
+        outer.rowconfigure(3, weight=1, minsize=130)
         log_card.columnconfigure(0, weight=1)
         log_card.rowconfigure(0, weight=1)
 
