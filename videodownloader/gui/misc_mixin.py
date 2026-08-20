@@ -36,6 +36,8 @@ class MiscMixin:
             download_subtitles=self.subtitles_var.get(),
             subtitle_langs=self.subtitle_lang_var.get(),
             cookies_browser=self.cookies_browser_var.get(),
+            download_sponsorblock=self.sponsorblock_var.get(),
+            sponsorblock_categories=self.sponsorblock_categories_var.get(),
         )
 
     def _on_template_choice_changed(self, event=None):

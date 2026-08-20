@@ -70,6 +70,11 @@ class FfmpegMixin:
             update_config(ffmpeg_path=path)
         self._refresh_quality_options()
 
+        # SponsorBlock removal re-encodes to cut segments, so it needs ffmpeg.
+        sponsorblock_state = "normal" if path else "disabled"
+        self.sponsorblock_check.configure(state=sponsorblock_state)
+        self.sponsorblock_entry.configure(state=sponsorblock_state)
+
     def _refresh_quality_options(self):
         quality_map = FFMPEG_QUALITY_MAP if self.ffmpeg_path else NO_FFMPEG_QUALITY_MAP
         current = self.quality_var.get()

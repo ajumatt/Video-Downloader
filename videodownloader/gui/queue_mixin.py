@@ -70,6 +70,11 @@ class QueueMixin:
     def _current_form_settings(self):
         """Snapshot of the form fields that apply to any newly queued item,
         whether it's added one at a time or as part of a batch."""
+        sponsorblock_categories = []
+        if self.ffmpeg_path and self.sponsorblock_var.get():
+            sponsorblock_categories = [
+                c.strip() for c in self.sponsorblock_categories_var.get().split(",") if c.strip()
+            ]
         return {
             "folder": self.folder_var.get().strip(),
             "template": self._current_output_template(),
@@ -78,6 +83,7 @@ class QueueMixin:
             "subtitles": self.subtitles_var.get(),
             "subtitle_langs": self.subtitle_lang_var.get(),
             "cookies_browser": COOKIE_BROWSER_OPTIONS.get(self.cookies_browser_var.get()),
+            "sponsorblock_categories": sponsorblock_categories,
         }
 
     def _make_queue_item(self, url, settings):
@@ -91,6 +97,7 @@ class QueueMixin:
             "subtitles": settings["subtitles"],
             "subtitle_langs": settings["subtitle_langs"],
             "cookies_browser": settings["cookies_browser"],
+            "sponsorblock_categories": settings["sponsorblock_categories"],
             "status": "Queued",
             "progress": 0,
             "error": None,
@@ -390,6 +397,16 @@ class QueueMixin:
                 ydl_opts["merge_output_format"] = "mp4"
                 if item["subtitles"]:
                     ydl_opts.setdefault("postprocessors", []).append({"key": "FFmpegEmbedSubtitle"})
+
+            if item["sponsorblock_categories"]:
+                # Mirrors yt-dlp's own --sponsorblock-remove: SponsorBlock
+                # fetches the segments, ModifyChapters cuts them out.
+                ydl_opts.setdefault("postprocessors", []).append(
+                    {"key": "SponsorBlock", "categories": item["sponsorblock_categories"]}
+                )
+                ydl_opts.setdefault("postprocessors", []).append(
+                    {"key": "ModifyChapters", "remove_sponsor_segments": item["sponsorblock_categories"]}
+                )
 
         max_attempts = 3
         last_error = None

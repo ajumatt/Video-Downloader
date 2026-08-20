@@ -117,6 +117,26 @@ class UIBuilderMixin:
             row=1, column=2, sticky="w", padx=(6, 0)
         )
 
+        self.sponsorblock_var = tk.BooleanVar(value=self.saved_config.get("download_sponsorblock", False))
+        self.sponsorblock_check = ttk.Checkbutton(
+            options_row, text="Remove sponsor segments (SponsorBlock)",
+            variable=self.sponsorblock_var, command=self._persist_ui_state,
+        )
+        self.sponsorblock_check.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.sponsorblock_categories_var = tk.StringVar(
+            value=self.saved_config.get("sponsorblock_categories", "sponsor,selfpromo,interaction")
+        )
+        self.sponsorblock_entry = ttk.Entry(
+            options_row, textvariable=self.sponsorblock_categories_var, width=28, font=(self.ui_font, 9)
+        )
+        self.sponsorblock_entry.grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+        self.sponsorblock_categories_var.trace_add("write", lambda *a: self._persist_ui_state())
+        ttk.Label(
+            options_row,
+            text="(needs ffmpeg; categories: sponsor, intro, outro, selfpromo, preview, filler, interaction, music_offtopic, hook)",
+            style="Muted.TLabel",
+        ).grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(6, 0))
+
         cookie_row = ttk.Frame(card)
         cookie_row.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         ttk.Label(cookie_row, text="Sign-in required?").pack(side="left", padx=(0, 8))
