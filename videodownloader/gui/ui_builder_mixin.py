@@ -59,10 +59,18 @@ class UIBuilderMixin:
         ttk.Button(folder_row, text="Browse...", command=self._browse_folder).grid(row=0, column=1)
 
         ttk.Label(card, text="Quality").grid(row=4, column=0, columnspan=2, sticky="w")
+        quality_row = ttk.Frame(card)
+        quality_row.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(2, 14))
+        quality_row.columnconfigure(0, weight=1)
         self.quality_var = tk.StringVar(value="Best available")
-        self.quality_menu = ttk.Combobox(card, textvariable=self.quality_var, state="readonly", font=(self.ui_font, 10))
-        self.quality_menu.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(2, 14))
+        self.quality_menu = ttk.Combobox(
+            quality_row, textvariable=self.quality_var, state="readonly", font=(self.ui_font, 10)
+        )
+        self.quality_menu.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.quality_menu.bind("<<ComboboxSelected>>", lambda e: self._persist_ui_state())
+        ttk.Button(quality_row, text="Choose format...", command=self._open_format_picker_window).grid(
+            row=0, column=1
+        )
 
         # Separates the required path (URL/folder/quality, above) from the
         # optional/advanced settings below, so the primary flow scans faster.

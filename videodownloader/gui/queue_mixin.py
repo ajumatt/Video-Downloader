@@ -52,6 +52,14 @@ def _friendly_error_hint(error_text):
     return None
 
 
+def _format_size(size_bytes):
+    size = float(size_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f}{unit}" if unit == "B" else f"{size:.1f}{unit}"
+        size /= 1024
+
+
 def _resolves_within_folder(folder, template):
     """True if joining `folder` with the (unsubstituted) template stays
     within `folder`. Checked against the actual joined+normalized path
@@ -86,7 +94,7 @@ class QueueMixin:
             "sponsorblock_categories": sponsorblock_categories,
         }
 
-    def _make_queue_item(self, url, settings):
+    def _make_queue_item(self, url, settings, custom_format=None, custom_format_audio_only=False):
         return {
             "id": str(uuid.uuid4()),
             "url": url,
@@ -98,6 +106,11 @@ class QueueMixin:
             "subtitle_langs": settings["subtitle_langs"],
             "cookies_browser": settings["cookies_browser"],
             "sponsorblock_categories": settings["sponsorblock_categories"],
+            # Set when queued via the format picker instead of the Quality
+            # dropdown: an exact yt-dlp format selector that overrides the
+            # normal quality-tier lookup in _download_one_item.
+            "custom_format": custom_format,
+            "custom_format_audio_only": custom_format_audio_only,
             "status": "Queued",
             "progress": 0,
             "error": None,
@@ -233,6 +246,152 @@ class QueueMixin:
         summary += "."
         self._log(summary)
 
+    def _open_format_picker_window(self):
+        if yt_dlp is None:
+            messagebox.showerror("yt-dlp not found", "Install it first with: pip install yt-dlp")
+            return
+
+        url = self.url_var.get().strip()
+        if not url:
+            messagebox.showwarning("Missing URL", "Paste a video URL first.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Choose Format")
+        win.geometry("700x420")
+        win.minsize(560, 300)
+        win.transient(self.root)
+
+        container = ttk.Frame(win, padding=14)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
+
+        status_var = tk.StringVar(value="Fetching available formats...")
+        ttk.Label(container, textvariable=status_var, style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 6)
+        )
+
+        columns = ("id", "resolution", "fps", "ext", "vcodec", "acodec", "size", "note")
+        tree = ttk.Treeview(container, columns=columns, show="headings")
+        headings = {
+            "id": "ID", "resolution": "Resolution", "fps": "FPS", "ext": "Ext",
+            "vcodec": "Video codec", "acodec": "Audio codec", "size": "Size", "note": "Note",
+        }
+        widths = {"id": 60, "resolution": 90, "fps": 50, "ext": 50, "vcodec": 100, "acodec": 100, "size": 80, "note": 110}
+        for col in columns:
+            tree.heading(col, text=headings[col])
+            tree.column(col, width=widths[col], stretch=(col == "note"))
+        tree.grid(row=1, column=0, sticky="nsew")
+
+        button_row = ttk.Frame(container)
+        button_row.grid(row=2, column=0, sticky="e", pady=(10, 0))
+        use_btn = ttk.Button(button_row, text="Use this format", state="disabled", style="Accent.TButton")
+        ttk.Button(button_row, text="Cancel", command=win.destroy).pack(side="left", padx=(0, 6))
+        use_btn.pack(side="left")
+
+        format_lookup = {}
+
+        def on_select(event=None):
+            use_btn.configure(state="normal" if tree.selection() else "disabled")
+
+        tree.bind("<<TreeviewSelect>>", on_select)
+
+        def use_selected():
+            selection = tree.selection()
+            if not selection:
+                return
+            fmt = format_lookup[selection[0]]
+            self._enqueue_custom_format(url, fmt)
+            win.destroy()
+
+        use_btn.configure(command=use_selected)
+        tree.bind("<Double-1>", lambda e: use_selected())
+
+        threading.Thread(
+            target=self._fetch_formats_worker, args=(url, win, tree, status_var, format_lookup), daemon=True
+        ).start()
+
+    def _fetch_formats_worker(self, url, win, tree, status_var, format_lookup):
+        try:
+            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+            formats = (info or {}).get("formats") or []
+            if not formats and (info or {}).get("entries"):
+                self.root.after(0, self._on_formats_error, win, status_var, "Can't list formats for a playlist URL — paste a single video URL.")
+                return
+            if not formats:
+                self.root.after(0, self._on_formats_error, win, status_var, "No formats found for this URL.")
+                return
+        except Exception as exc:
+            self.root.after(0, self._on_formats_error, win, status_var, strip_ansi(str(exc)))
+            return
+        self.root.after(0, self._populate_format_tree, win, tree, status_var, formats, format_lookup)
+
+    def _on_formats_error(self, win, status_var, message):
+        if not win.winfo_exists():
+            return
+        status_var.set(f"Couldn't fetch formats: {message}")
+
+    def _populate_format_tree(self, win, tree, status_var, formats, format_lookup):
+        if not win.winfo_exists():
+            return
+
+        def sort_key(f):
+            has_video = (f.get("vcodec") or "none") != "none"
+            height = f.get("height") or 0
+            abr = f.get("abr") or f.get("tbr") or 0
+            return (0 if has_video else 1, -height, -abr)
+
+        for fmt in sorted(formats, key=sort_key):
+            has_video = (fmt.get("vcodec") or "none") != "none"
+            has_audio = (fmt.get("acodec") or "none") != "none"
+            resolution = f"{fmt['width']}x{fmt['height']}" if fmt.get("width") and fmt.get("height") else (
+                "audio only" if has_audio and not has_video else "-"
+            )
+            size_bytes = fmt.get("filesize") or fmt.get("filesize_approx")
+            size_text = _format_size(size_bytes) if size_bytes else "-"
+            iid = tree.insert("", "end", values=(
+                fmt.get("format_id", "-"),
+                resolution,
+                fmt.get("fps") or "-",
+                fmt.get("ext", "-"),
+                fmt.get("vcodec") or "-",
+                fmt.get("acodec") or "-",
+                size_text,
+                fmt.get("format_note") or "",
+            ))
+            format_lookup[iid] = {
+                "format_id": fmt.get("format_id"),
+                "has_video": has_video,
+                "has_audio": has_audio,
+            }
+
+        status_var.set(f"{len(formats)} formats available. Select one, then click \"Use this format\".")
+
+    def _enqueue_custom_format(self, url, fmt):
+        settings = self._current_form_settings()
+        error = self._validate_form_settings(settings)
+        if error:
+            messagebox.showwarning("Can't add to queue", error)
+            return
+
+        format_id = fmt["format_id"]
+        if fmt["has_video"] and not fmt["has_audio"]:
+            custom_format = f"{format_id}+bestaudio"
+            audio_only = False
+        else:
+            custom_format = format_id
+            audio_only = fmt["has_audio"] and not fmt["has_video"]
+
+        item = self._make_queue_item(url, settings, custom_format=custom_format, custom_format_audio_only=audio_only)
+        self.download_queue.append(item)
+        self._insert_queue_row(item)
+        self._update_queue_count_label()
+        self.url_var.set("")
+        self._log(f"Added to queue (format {custom_format}): {url}")
+        self._maybe_start_queue_worker()
+
     def _cancel_active_item(self):
         self.cancel_requested = True
         self._set_status("Cancelling...")
@@ -321,8 +480,11 @@ class QueueMixin:
         self.root.after(0, self._set_status, "Starting...")
         self.root.after(0, self._log, f"Fetching: {item['url']}")
 
-        quality_map = FFMPEG_QUALITY_MAP if self.ffmpeg_path else NO_FFMPEG_QUALITY_MAP
-        fmt = quality_map.get(item["quality"], "best")
+        if item["custom_format"]:
+            fmt = item["custom_format"]
+        else:
+            quality_map = FFMPEG_QUALITY_MAP if self.ffmpeg_path else NO_FFMPEG_QUALITY_MAP
+            fmt = quality_map.get(item["quality"], "best")
 
         def progress_hook(d):
             if self.cancel_requested:
@@ -389,7 +551,17 @@ class QueueMixin:
 
         if self.ffmpeg_path:
             ydl_opts["ffmpeg_location"] = self.ffmpeg_path
-            if "Audio only" in item["quality"]:
+            if item["custom_format"]:
+                # A specific format picked via "Choose format..." downloads
+                # exactly what was selected: no forced MP3 conversion for an
+                # audio-only pick (that's the canned "Audio only" tier's
+                # behavior, not what picking an exact format implies), and
+                # no forced mp4 container on a pure-audio stream either.
+                if not item["custom_format_audio_only"]:
+                    ydl_opts["merge_output_format"] = "mp4"
+                    if item["subtitles"]:
+                        ydl_opts.setdefault("postprocessors", []).append({"key": "FFmpegEmbedSubtitle"})
+            elif "Audio only" in item["quality"]:
                 ydl_opts["postprocessors"] = [
                     {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
                 ]
