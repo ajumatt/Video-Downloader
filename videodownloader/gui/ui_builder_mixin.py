@@ -143,6 +143,9 @@ class UIBuilderMixin:
             action_row, text="Add to Queue", command=self._enqueue_current, style="Accent.TButton"
         )
         self.download_btn.pack(side="left", ipadx=10, ipady=2)
+        ttk.Button(action_row, text="Add multiple...", command=self._open_batch_add_window).pack(
+            side="left", padx=(8, 0)
+        )
         self.cancel_btn = ttk.Button(
             action_row, text="Cancel current", command=self._cancel_active_item, state="disabled"
         )

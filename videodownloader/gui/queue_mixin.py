@@ -5,7 +5,8 @@ import os
 import threading
 import time
 import uuid
-from tkinter import messagebox
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 from videodownloader.optional_deps import yt_dlp
 from videodownloader.constants import COOKIE_BROWSER_OPTIONS, FFMPEG_QUALITY_MAP, NO_FFMPEG_QUALITY_MAP
@@ -66,56 +67,164 @@ def _resolves_within_folder(folder, template):
 
 
 class QueueMixin:
+    def _current_form_settings(self):
+        """Snapshot of the form fields that apply to any newly queued item,
+        whether it's added one at a time or as part of a batch."""
+        return {
+            "folder": self.folder_var.get().strip(),
+            "template": self._current_output_template(),
+            "quality": self.quality_var.get(),
+            "playlist": self.playlist_var.get(),
+            "subtitles": self.subtitles_var.get(),
+            "subtitle_langs": self.subtitle_lang_var.get(),
+            "cookies_browser": COOKIE_BROWSER_OPTIONS.get(self.cookies_browser_var.get()),
+        }
+
+    def _make_queue_item(self, url, settings):
+        return {
+            "id": str(uuid.uuid4()),
+            "url": url,
+            "folder": settings["folder"],
+            "quality": settings["quality"],
+            "template": settings["template"],
+            "playlist": settings["playlist"],
+            "subtitles": settings["subtitles"],
+            "subtitle_langs": settings["subtitle_langs"],
+            "cookies_browser": settings["cookies_browser"],
+            "status": "Queued",
+            "progress": 0,
+            "error": None,
+            "filename": None,
+        }
+
+    def _validate_form_settings(self, settings):
+        """Returns an error message if the current folder/template combo is
+        unusable, or None if it's fine. Also creates the folder if it's
+        valid but doesn't exist yet. Shared by single-add and batch-add so
+        the checks stay in exactly one place."""
+        folder = settings["folder"]
+        template = settings["template"]
+        if not folder:
+            return "Choose a folder to save the video in."
+        if not _resolves_within_folder(folder, template):
+            return (
+                "The filename template can't be an absolute path or use '..' to leave "
+                "the download folder. Fix it in the Filename field before adding to the queue."
+            )
+        if not os.path.isdir(folder):
+            try:
+                os.makedirs(folder, exist_ok=True)
+            except OSError as exc:
+                return str(exc)
+        return None
+
     def _enqueue_current(self):
         if yt_dlp is None:
             messagebox.showerror("yt-dlp not found", "Install it first with: pip install yt-dlp")
             return
 
         url = self.url_var.get().strip()
-        folder = self.folder_var.get().strip()
-        template = self._current_output_template()
-
         if not url:
             messagebox.showwarning("Missing URL", "Paste a video URL first.")
             return
-        if not folder:
-            messagebox.showwarning("Missing folder", "Choose a folder to save the video in.")
-            return
-        if not _resolves_within_folder(folder, template):
-            messagebox.showwarning(
-                "Invalid filename template",
-                "The filename template can't be an absolute path or use '..' to leave "
-                "the download folder. Fix it in the Filename field before adding to the queue.",
-            )
-            return
-        if not os.path.isdir(folder):
-            try:
-                os.makedirs(folder, exist_ok=True)
-            except OSError as exc:
-                messagebox.showerror("Can't use this folder", str(exc))
-                return
 
-        item = {
-            "id": str(uuid.uuid4()),
-            "url": url,
-            "folder": folder,
-            "quality": self.quality_var.get(),
-            "template": template,
-            "playlist": self.playlist_var.get(),
-            "subtitles": self.subtitles_var.get(),
-            "subtitle_langs": self.subtitle_lang_var.get(),
-            "cookies_browser": COOKIE_BROWSER_OPTIONS.get(self.cookies_browser_var.get()),
-            "status": "Queued",
-            "progress": 0,
-            "error": None,
-            "filename": None,
-        }
+        settings = self._current_form_settings()
+        error = self._validate_form_settings(settings)
+        if error:
+            messagebox.showwarning("Can't add to queue", error)
+            return
+
+        item = self._make_queue_item(url, settings)
         self.download_queue.append(item)
         self._insert_queue_row(item)
         self._update_queue_count_label()
         self.url_var.set("")
         self._log(f"Added to queue: {url}")
         self._maybe_start_queue_worker()
+
+    def _open_batch_add_window(self):
+        if yt_dlp is None:
+            messagebox.showerror("yt-dlp not found", "Install it first with: pip install yt-dlp")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Add Multiple URLs")
+        win.geometry("520x420")
+        win.minsize(420, 300)
+        win.transient(self.root)
+
+        container = ttk.Frame(win, padding=14)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
+
+        ttk.Label(container, text="Paste one URL per line:").grid(row=0, column=0, sticky="w", pady=(0, 6))
+
+        text_frame = ttk.Frame(container)
+        text_frame.grid(row=1, column=0, sticky="nsew")
+        text_frame.columnconfigure(0, weight=1)
+        text_frame.rowconfigure(0, weight=1)
+        url_text = tk.Text(text_frame, wrap="word", font=(self.ui_font, 10))
+        url_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=url_text.yview)
+        url_text.configure(yscrollcommand=url_scroll.set)
+        url_text.grid(row=0, column=0, sticky="nsew")
+        url_scroll.grid(row=0, column=1, sticky="ns")
+        url_text.focus_set()
+
+        button_row = ttk.Frame(container)
+        button_row.grid(row=2, column=0, sticky="e", pady=(10, 0))
+
+        def submit():
+            raw_lines = url_text.get("1.0", "end").splitlines()
+            self._enqueue_batch(raw_lines)
+            win.destroy()
+
+        ttk.Button(button_row, text="Cancel", command=win.destroy).pack(side="left", padx=(0, 6))
+        ttk.Button(button_row, text="Add All", command=submit, style="Accent.TButton").pack(side="left")
+
+    def _enqueue_batch(self, raw_lines):
+        settings = self._current_form_settings()
+        error = self._validate_form_settings(settings)
+        if error:
+            messagebox.showwarning("Can't add to queue", error)
+            return
+
+        already_queued = {i["url"] for i in self.download_queue}
+        seen = set()
+        added = 0
+        duplicates = 0
+        invalid = 0
+
+        for raw_line in raw_lines:
+            url = raw_line.strip()
+            if not url:
+                continue
+            if not (url.startswith("http://") or url.startswith("https://")):
+                invalid += 1
+                continue
+            if url in already_queued or url in seen:
+                duplicates += 1
+                continue
+            seen.add(url)
+            item = self._make_queue_item(url, settings)
+            self.download_queue.append(item)
+            self._insert_queue_row(item)
+            added += 1
+
+        if added:
+            self._update_queue_count_label()
+            self._maybe_start_queue_worker()
+
+        summary = f"Added {added} to queue"
+        details = []
+        if duplicates:
+            details.append(f"{duplicates} duplicate{'s' if duplicates != 1 else ''} skipped")
+        if invalid:
+            details.append(f"{invalid} invalid line{'s' if invalid != 1 else ''} skipped")
+        if details:
+            summary += f" ({', '.join(details)})"
+        summary += "."
+        self._log(summary)
 
     def _cancel_active_item(self):
         self.cancel_requested = True
