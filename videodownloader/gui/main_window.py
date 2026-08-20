@@ -14,6 +14,7 @@ from videodownloader.config import load_config
 from videodownloader.gui.toast_mixin import ToastMixin
 from videodownloader.gui.theme_mixin import ThemeMixin
 from videodownloader.gui.ytdlp_mixin import YtdlpMixin
+from videodownloader.gui.app_update_mixin import AppUpdateMixin
 from videodownloader.gui.misc_mixin import MiscMixin
 from videodownloader.gui.ui_builder_mixin import UIBuilderMixin
 from videodownloader.gui.ffmpeg_mixin import FfmpegMixin
@@ -32,7 +33,7 @@ def pick_available_font(candidates, fallback):
 
 
 class VideoDownloaderApp(
-    ToastMixin, ThemeMixin, YtdlpMixin, MiscMixin,
+    ToastMixin, ThemeMixin, YtdlpMixin, AppUpdateMixin, MiscMixin,
     UIBuilderMixin, FfmpegMixin, QueueMixin,
 ):
     def __init__(self, root):
@@ -50,6 +51,7 @@ class VideoDownloaderApp(
         self.ffmpeg_path = None
         self.ffmpeg_busy = False
         self.ytdlp_busy = False
+        self.app_update_busy = False
 
         # Download queue: a list of dicts, processed one at a time by a
         # single background worker thread. Items stay in this list after
@@ -72,6 +74,7 @@ class VideoDownloaderApp(
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._startup_ffmpeg_check()
+        self._start_app_update_check(manual=False)
 
         if yt_dlp is None:
             messagebox.showerror(

@@ -4,6 +4,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 
+from videodownloader import __version__
 from videodownloader.paths import DEFAULT_DOWNLOAD_FOLDER
 from videodownloader.constants import OUTPUT_TEMPLATE_PRESETS, COOKIE_BROWSER_OPTIONS
 from videodownloader.ytdlp_utils import get_installed_ytdlp_version
@@ -289,8 +290,29 @@ class UIBuilderMixin:
         )
         self.check_ytdlp_btn.grid(row=0, column=1, sticky="e")
 
-        # Let the two status labels above rewrap to the window's actual
-        # width on resize instead of staying fixed at their initial 380px.
+        ttk.Separator(sys_card, orient="horizontal").grid(row=3, column=0, sticky="ew", pady=(8, 8))
+
+        app_row = ttk.Frame(sys_card)
+        app_row.grid(row=4, column=0, sticky="ew")
+        app_row.columnconfigure(0, weight=1)
+        self.app_update_status_var = tk.StringVar(value=f"App: v{__version__}")
+        self.app_update_status_label = ttk.Label(
+            app_row, textvariable=self.app_update_status_var, style="Muted.TLabel", wraplength=380
+        )
+        self.app_update_status_label.grid(row=0, column=0, sticky="w")
+        app_btns = ttk.Frame(app_row)
+        app_btns.grid(row=0, column=1, sticky="e")
+        self.view_release_btn = ttk.Button(
+            app_btns, text="View release", command=self._open_latest_release_page, state="disabled"
+        )
+        self.view_release_btn.pack(side="left", padx=(0, 6))
+        self.check_app_update_btn = ttk.Button(
+            app_btns, text="Check for updates", command=lambda: self._start_app_update_check(manual=True)
+        )
+        self.check_app_update_btn.pack(side="left")
+
+        # Let the status labels above rewrap to the window's actual width on
+        # resize instead of staying fixed at their initial 380px.
         self.root.bind("<Configure>", self._on_root_resize)
 
         self._ui_fully_built = True
@@ -301,3 +323,4 @@ class UIBuilderMixin:
         new_wrap = max(280, event.width - 400)
         self.ffmpeg_status_label.configure(wraplength=new_wrap)
         self.ytdlp_status_label.configure(wraplength=new_wrap)
+        self.app_update_status_label.configure(wraplength=new_wrap)
