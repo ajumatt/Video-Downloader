@@ -1,0 +1,32 @@
+name: Build and Release Windows Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build portable Windows bundle
+        shell: pwsh
+        run: ./scripts/package_windows.ps1 -Version "${{ github.ref_name }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-bundle
+          path: dist/*.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
