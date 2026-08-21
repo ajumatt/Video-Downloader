@@ -42,6 +42,8 @@ There's also a "Check for updates" button in the app for checking again later wi
 
 The app uses [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) for a modern light/dark theme (the toggle button is top right). It's listed in requirements.txt, so it installs the same way as yt-dlp. If it's ever missing for some reason, the app falls back to a plain built-in theme instead of failing to start.
 
+The window opens maximized so labels and hints don't get cut off; resize or un-maximize it like any normal window if you'd rather use less of the screen.
+
 ### Settings and history
 
 The app remembers your theme, last download folder, quality, filename style, and playlist/subtitle/cookie choices between runs, stored in `.video_downloader_config.json` in your home folder. The first time it runs, before anything's been saved, the download folder defaults to your system Downloads folder.

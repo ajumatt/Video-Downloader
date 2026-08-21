@@ -3,6 +3,7 @@ mixins in this package. Each mixin owns one cohesive group of behavior
 (theme, ffmpeg, yt-dlp, queue, etc.) but they all operate on the same
 `self` — the same widgets, StringVars, and shared state defined here."""
 
+import platform
 import threading
 import tkinter as tk
 from tkinter import font as tkfont
@@ -20,6 +21,24 @@ from videodownloader.gui.misc_mixin import MiscMixin
 from videodownloader.gui.ui_builder_mixin import UIBuilderMixin
 from videodownloader.gui.ffmpeg_mixin import FfmpegMixin
 from videodownloader.gui.queue_mixin import QueueMixin
+
+
+def maximize_window(root, system=None):
+    """Best-effort: maximizes the window (title bar/taskbar stay visible,
+    not true fullscreen). `system` is injectable for testing; defaults to
+    the real platform. Some minimal Linux window managers don't support
+    either zoomed form, so a TclError here is swallowed rather than
+    crashing startup — same graceful-degradation style as the rest of
+    the app's optional setup (sv-ttk/ffmpeg fallbacks)."""
+    if system is None:
+        system = platform.system()
+    try:
+        if system == "Linux":
+            root.attributes("-zoomed", True)
+        else:
+            root.state("zoomed")
+    except tk.TclError:
+        pass
 
 
 def pick_available_font(candidates, fallback):
@@ -45,6 +64,10 @@ class VideoDownloaderApp(
         default_height = min(1150, max(950, self.root.winfo_screenheight() - 100))
         self.root.geometry(f"780x{default_height}")
         self.root.minsize(700, 950)
+        # Maximized on startup so helper/hint text isn't cut off at the
+        # narrower default width; un-maximizing falls back to the geometry
+        # set above.
+        maximize_window(self.root)
 
         self.ffmpeg_thread = None
         self.ytdlp_thread = None
