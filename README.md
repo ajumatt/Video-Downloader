@@ -1,6 +1,6 @@
 # Video Downloader
 
-A small desktop app that wraps [yt-dlp](https://github.com/yt-dlp/yt-dlp). Paste video URLs, queue them up, and they download automatically, one at a time, with quality, subtitle, playlist, and filename options along the way.
+A small desktop app that wraps [yt-dlp](https://github.com/yt-dlp/yt-dlp). Paste video URLs — one at a time or a whole batch — queue them up, and they download automatically, with quality, subtitle, playlist, SponsorBlock, and filename options along the way.
 
 ## Setup
 
@@ -38,6 +38,10 @@ yt-dlp updates constantly as sites change how their pages work, so staying curre
 
 There's also a "Check for updates" button in the app for checking again later without closing and reopening, useful if you leave the app running for a while. If it finds an update, it asks before restarting, since by then you might have something in progress.
 
+### About app updates
+
+Separately from yt-dlp, the app checks its own GitHub releases on launch too, shown as its own "App: vX.Y.Z" status line in the System section. Unlike the yt-dlp check, this one never auto-installs — there's no single safe way to replace the running app across both the "clone the repo" and portable-zip distribution paths — so it just notifies you and enables a "View release" button that opens the release page in your browser to download manually. There's a "Check for updates" button here too, for checking again without restarting the app.
+
 ### Look and feel
 
 The app uses [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) for a modern light/dark theme (the toggle button is top right). It's listed in requirements.txt, so it installs the same way as yt-dlp. If it's ever missing for some reason, the app falls back to a plain built-in theme instead of failing to start.
@@ -63,18 +67,24 @@ python video_downloader.py
 
 ## Using it
 
-1. Paste the URL of a video page (YouTube, and hundreds of other sites yt-dlp supports).
+1. Paste the URL of a video page (YouTube, and hundreds of other sites yt-dlp supports), or check "Detect URLs from clipboard" next to the URL field to have it fill in automatically whenever you copy a video link while the app has focus (off by default; only fills an empty URL field, so it won't clobber something you're already typing).
 2. Set the folder, quality, filename style, and any options you want (playlist, subtitles, cookies — see below).
-3. Click Add to Queue, or just press Enter in the URL field. The item shows up in the Queue list and starts downloading automatically if nothing else is currently running. The URL field clears so you can immediately paste and queue the next one.
-4. Repeat for as many videos as you want. They download one at a time, in the order added, so your connection doesn't get split thin across a pile of simultaneous downloads.
+3. Click Add to Queue, or just press Enter in the URL field. The item shows up in the Queue list and starts downloading automatically if nothing else is currently running. The URL field clears so you can immediately paste and queue the next one. Or click "Add multiple..." to paste a whole batch of URLs at once (one per line) and queue them all in one go — duplicates already in the queue and obviously-invalid lines are skipped and reported, rather than silently dropped.
+4. Repeat for as many videos as you want. By default they download one at a time, in the order added; see "Concurrent downloads" below if you'd rather run several at once.
 
 The Queue card shows every item's status (Queued, Downloading, Done, Failed, Cancelled) and live progress. "Cancel current" stops whichever item is actively downloading and the queue moves on to the next one. "Remove selected" drops a queued item, or offers to cancel if you select the active one. "Clear completed" clears out finished/failed/cancelled entries so the list doesn't pile up.
+
+Next to "Nothing queued yet." in the Queue card, "Concurrent downloads" sets how many items download at the same time (1-5, default 1). Higher isn't always faster — it depends on your connection and the source site — but it helps when you're queuing a lot of shorter videos and don't want them fully serialized.
 
 Files save as `<video title>.<ext>` in the folder you chose, using whatever filename style is selected (see below). The app's own `ffmpeg` folder is separate from that, it's just where the app keeps its ffmpeg copy, not where videos go.
 
 You'll get a small notification in the corner of the app when each download finishes or fails, instead of a popup you have to dismiss for every item in a queue.
 
 The top toolbar has four buttons: History (see above), Help (opens this README with whatever app your system has associated with .md files), the light/dark toggle, and Exit.
+
+### Choosing an exact format
+
+The Quality dropdown covers the common cases, but "Choose format..." next to it lists every format yt-dlp can see for the pasted URL — resolution, fps, container, codecs, and file size — so you can pick a specific one directly. Picking a video-only format automatically pairs it with the best available audio; picking an audio-only format downloads just that, without the "Audio only" tier's automatic MP3 conversion. Needs a single video URL in the field first (not a playlist link) since it has to fetch that video's format list.
 
 ### Playlists
 
@@ -83,6 +93,10 @@ Off by default. yt-dlp downloads the whole playlist if a URL happens to include 
 ### Subtitles
 
 Check the box and set language codes (comma-separated, e.g. `en,es`) to grab subtitles alongside the video. Prefers manually-created captions and falls back to auto-generated ones. If ffmpeg is set up, subtitles get embedded directly into the video file; otherwise they're saved as separate subtitle files next to it.
+
+### Removing sponsored segments (SponsorBlock)
+
+Needs ffmpeg. Check "Remove sponsor segments (SponsorBlock)" and the app cuts out segments the community has flagged on [SponsorBlock](https://sponsor.ajay.app/) — sponsor reads, intros/outros, subscribe reminders, and similar — before the file is saved. The categories field (default `sponsor,selfpromo,interaction`) is a comma-separated list; the full set SponsorBlock supports is `sponsor, intro, outro, selfpromo, preview, filler, interaction, music_offtopic, hook`. Only works for videos that have SponsorBlock submissions; videos without any are downloaded normally.
 
 ### Filenames
 
