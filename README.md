@@ -90,7 +90,11 @@ The Filename dropdown offers a few common patterns (Title, Title - Uploader, Upl
 
 Some videos need you to be logged in (age-restricted, unlisted, members-only). The "Sign-in required?" dropdown lets you borrow cookies from a browser already logged into the site, the same way `yt-dlp --cookies-from-browser` works. The browser needs to be closed on Windows for this to work, since it can't read the cookie database while the browser has it locked.
 
+### Extra yt-dlp options (advanced)
+
+For anything the app doesn't have a dedicated control for, type raw yt-dlp command-line flags into the "Extra yt-dlp options" field — e.g. `--limit-rate 500K` or `--write-comments`. It accepts the same flags as the `yt-dlp` CLI itself (quoted values work too, e.g. `--output "%(uploader)s/%(title)s.%(ext)s"`), applied on top of whatever the other fields already set; if a flag conflicts with one of those (like `--format`), the flag you typed here wins. A bad or unknown flag is caught and explained when you click "Add to Queue," not partway through a download. This field is intentionally **not** remembered between runs, so a one-off flag can't silently keep affecting later, unrelated downloads.
+
 ## Notes
 
-- The app now covers cookies, subtitles, playlists, and custom filenames, but yt-dlp supports plenty more flags than that (rate limiting, SponsorBlock, format merging tweaks, and so on). A handful of edge-case sites may still need the yt-dlp command line directly.
+- The app covers cookies, subtitles, playlists, custom filenames, and (via the "Extra yt-dlp options" field above) raw yt-dlp flags for anything else. A handful of edge-case sites may still need the yt-dlp command line directly.
 - YouTube occasionally breaks one of its player clients for a few days at a time, which shows up as `HTTP Error 403: Forbidden` even on the latest yt-dlp. The app tries several player clients (default, android, tv, ios, web_safari) and automatically retries a couple of times with a cleared cache before giving up, since this specific error is often intermittent. If it still fails after that, it's very likely a current YouTube-side issue rather than something wrong with your setup, worth checking [yt-dlp's GitHub issues](https://github.com/yt-dlp/yt-dlp/issues) for the current status.

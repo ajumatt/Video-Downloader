@@ -2,12 +2,18 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import urllib.request
+from optparse import OptParseError
 
 from videodownloader.optional_deps import yt_dlp
 from videodownloader.os_utils import restart_app
+
+# A URL yt_dlp.parse_options() requires as an argument but never fetches
+# (parse_options only parses the argv list; it doesn't touch the network).
+_DUMMY_URL = "https://example.invalid/"
 
 # Set on the relaunched process's environment right before restart_app() so
 # that if pip reports success but the version check still sees the old
@@ -58,6 +64,37 @@ def update_ytdlp_package():
         return result.returncode == 0, result.stdout
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
+
+
+def parse_extra_ytdlp_args(raw_args):
+    """Parses a raw CLI-style yt-dlp flag string (e.g. "--limit-rate 500K")
+    into the subset of yt_dlp.YoutubeDL options it actually changes.
+
+    Diffs against a no-flag baseline rather than returning parse_options()'s
+    full opts dict, since that dict holds yt-dlp's default value for every
+    option whether the user set it or not; merging it whole into the app's
+    own ydl_opts would silently overwrite unrelated settings (format,
+    postprocessors, etc.) with those defaults.
+
+    Returns (opts, error): opts is a dict on success (empty if raw_args is
+    blank), or None on failure, with error holding a message in that case.
+    """
+    if not raw_args.strip():
+        return {}, None
+
+    try:
+        tokens = shlex.split(raw_args)
+    except ValueError as exc:
+        return None, str(exc)
+
+    try:
+        baseline = yt_dlp.parse_options([_DUMMY_URL]).ydl_opts
+        custom = yt_dlp.parse_options(tokens + [_DUMMY_URL]).ydl_opts
+    except OptParseError as exc:
+        return None, str(exc)
+
+    diff = {key: value for key, value in custom.items() if baseline.get(key) != value}
+    return diff, None
 
 
 def check_and_apply_ytdlp_update_before_launch():

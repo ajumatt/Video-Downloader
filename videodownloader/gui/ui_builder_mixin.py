@@ -155,8 +155,24 @@ class UIBuilderMixin:
             style="Muted.TLabel",
         ).grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(6, 0))
 
+        extra_args_row = ttk.Frame(card)
+        extra_args_row.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(6, 4))
+        extra_args_row.columnconfigure(1, weight=1)
+        ttk.Label(extra_args_row, text="Extra yt-dlp options (advanced)").grid(row=0, column=0, sticky="w")
+        # Intentionally not persisted to config: a forgotten raw flag
+        # silently applying to unrelated future downloads is a real footgun,
+        # so this clears on every launch. Still shared for the session, so
+        # batch-add and single-add both pick up whatever's currently typed.
+        self.extra_ytdlp_args_var = tk.StringVar(value="")
+        ttk.Entry(
+            extra_args_row, textvariable=self.extra_ytdlp_args_var, font=(self.mono_font, 9)
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        ttk.Label(
+            extra_args_row, text="(raw CLI flags, e.g. --limit-rate 500K)", style="Muted.TLabel"
+        ).grid(row=1, column=0, columnspan=2, sticky="w")
+
         cookie_row = ttk.Frame(card)
-        cookie_row.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        cookie_row.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         ttk.Label(cookie_row, text="Sign-in required?").pack(side="left", padx=(0, 8))
         saved_browser = self.saved_config.get("cookies_browser", "None")
         self.cookies_browser_var = tk.StringVar(
@@ -176,7 +192,7 @@ class UIBuilderMixin:
 
         # --- action row -----------------------------------------------------
         action_row = ttk.Frame(card)
-        action_row.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        action_row.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         self.download_btn = ttk.Button(
             action_row, text="Add to Queue", command=self._enqueue_current, style="Accent.TButton"
         )
@@ -186,11 +202,11 @@ class UIBuilderMixin:
         )
 
         self.progress = ttk.Progressbar(card, mode="determinate", maximum=100)
-        self.progress.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(14, 6))
+        self.progress.grid(row=13, column=0, columnspan=2, sticky="ew", pady=(14, 6))
 
         self.status_var = tk.StringVar(value="Ready.")
         ttk.Label(card, textvariable=self.status_var, style="Muted.TLabel").grid(
-            row=13, column=0, columnspan=2, sticky="w"
+            row=14, column=0, columnspan=2, sticky="w"
         )
 
         # --- queue card -----------------------------------------------------

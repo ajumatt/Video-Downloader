@@ -12,6 +12,7 @@ from videodownloader.optional_deps import yt_dlp
 from videodownloader.constants import COOKIE_BROWSER_OPTIONS, FFMPEG_QUALITY_MAP, NO_FFMPEG_QUALITY_MAP
 from videodownloader.history import append_history
 from videodownloader.text_utils import strip_ansi
+from videodownloader.ytdlp_utils import parse_extra_ytdlp_args
 
 # (substring to look for in a raw yt-dlp error, plain-English follow-up
 # line). First match wins; checked in order, so put more specific
@@ -92,6 +93,7 @@ class QueueMixin:
             "subtitle_langs": self.subtitle_lang_var.get(),
             "cookies_browser": COOKIE_BROWSER_OPTIONS.get(self.cookies_browser_var.get()),
             "sponsorblock_categories": sponsorblock_categories,
+            "extra_ytdlp_args": self.extra_ytdlp_args_var.get().strip(),
         }
 
     def _make_queue_item(self, url, settings, custom_format=None, custom_format_audio_only=False):
@@ -106,6 +108,7 @@ class QueueMixin:
             "subtitle_langs": settings["subtitle_langs"],
             "cookies_browser": settings["cookies_browser"],
             "sponsorblock_categories": settings["sponsorblock_categories"],
+            "extra_ytdlp_args": settings["extra_ytdlp_args"],
             # Set when queued via the format picker instead of the Quality
             # dropdown: an exact yt-dlp format selector that overrides the
             # normal quality-tier lookup in _download_one_item.
@@ -137,6 +140,11 @@ class QueueMixin:
                 os.makedirs(folder, exist_ok=True)
             except OSError as exc:
                 return str(exc)
+
+        _, extra_args_error = parse_extra_ytdlp_args(settings["extra_ytdlp_args"])
+        if extra_args_error:
+            return f"Extra yt-dlp options: {extra_args_error}"
+
         return None
 
     def _enqueue_current(self):
@@ -582,6 +590,15 @@ class QueueMixin:
                 ydl_opts.setdefault("postprocessors", []).append(
                     {"key": "ModifyChapters", "remove_sponsor_segments": item["sponsorblock_categories"]}
                 )
+
+        if item["extra_ytdlp_args"]:
+            # Applied last so a power user's raw flag wins over the app's
+            # own quality/subtitle/etc. opts on conflict, matching normal
+            # yt-dlp CLI semantics. Already validated at Add-to-Queue time,
+            # so a parse error here would mean the flag string changed
+            # after enqueueing, which the current UI doesn't allow.
+            extra_opts, _ = parse_extra_ytdlp_args(item["extra_ytdlp_args"])
+            ydl_opts.update(extra_opts)
 
         max_attempts = 3
         last_error = None
